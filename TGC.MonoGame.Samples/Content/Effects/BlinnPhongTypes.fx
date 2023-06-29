@@ -85,7 +85,7 @@ VertexShaderOutput MainVS(in VertexShaderInput input)
 
     output.Position = mul(input.Position, WorldViewProjection);
     output.WorldPosition = mul(input.Position, World);
-    output.Normal = mul(float4(normalize(input.Normal.xyz), 1.0), InverseTransposeWorld);
+    output.Normal = mul(float4(normalize(input.Normal.xyz), 1.0), InverseTransposeWorld); //Se obtienen los vectores normales multiplicando por la matriz MBN
     output.TextureCoordinates = input.TextureCoordinates * Tiling;
 	
 	return output;
@@ -93,9 +93,12 @@ VertexShaderOutput MainVS(in VertexShaderInput input)
 
 float4 MainPS(VertexShaderOutput input) : COLOR
 {
+    //Es importante notar que todas las operaciones las hacemos son espacio mundo, dado que quiero que la luz este en una posicion en espacio mundo compartida para todos los objetos
+    //
+
     // Base vectors
-    float3 lightDirection = normalize(lightPosition - input.WorldPosition.xyz);
-    float3 viewDirection = normalize(eyePosition - input.WorldPosition.xyz);
+    float3 lightDirection = normalize(lightPosition - input.WorldPosition.xyz); //direccion desde la posicion de la luz a la posicion del pto en el espacio mundo
+    float3 viewDirection = normalize(eyePosition - input.WorldPosition.xyz); //direccion desde la posicion del pto en espacio mundo a la posicion de la camara
     float3 halfVector = normalize(lightDirection + viewDirection);
     float3 normal = normalize(input.Normal.xyz);
     
@@ -103,15 +106,18 @@ float4 MainPS(VertexShaderOutput input) : COLOR
     float4 texelColor = tex2D(textureSampler, input.TextureCoordinates);
     
 	// Calculate the diffuse light
-    float NdotL = saturate(dot(normal, lightDirection));
+    float NdotL = saturate(dot(normal, lightDirection)); //calculamos que tan alineados estan la luz con la normal de ese fragmento (Ver pag 8 pdf)
     float3 diffuseLight = KDiffuse * diffuseColor * NdotL;
 
 	// Calculate the specular light
-    float NdotH = dot(normal, halfVector);
+    float NdotH = dot(normal, halfVector); //(ver pag 9)
     float3 specularLight = KSpecular * specularColor * pow(saturate(NdotH), shininess);
     
-    // Final calculation
-    float4 finalColor = float4(saturate(ambientColor * KAmbient + diffuseLight) * texelColor.rgb + specularLight, texelColor.a);
+    // Final calculation (ver pag 14)
+    float4 finalColor = 
+    float4(saturate(ambientColor * KAmbient  // Luz ambiente
+                    + diffuseLight)* texelColor.rgb 
+                    + specularLight, texelColor.a);
      
     return finalColor;
 
@@ -135,6 +141,7 @@ float4 NormalMapPS(VertexShaderOutput input) : COLOR
     float3 lightDirection = normalize(lightPosition - input.WorldPosition.xyz);
     float3 viewDirection = normalize(eyePosition - input.WorldPosition.xyz);
     float3 halfVector = normalize(lightDirection + viewDirection);
+    //Obtenemos la normal de la funcion getNormalFromMap, donde le pasamos la textura NormalMap, la posicion del fragmento en espacio mundo y su normal (interpolacion de los vertices)
     float3 normal =  getNormalFromMap(input.TextureCoordinates, input.WorldPosition.xyz, normalize(input.Normal.xyz));
 
 	// Get the texture texel
@@ -176,6 +183,7 @@ GouraudVertexShaderOutput GouraudVS(in GouraudVertexShaderInput input)
 
     output.Position = mul(input.Position, WorldViewProjection);
     
+    //Todos los cálculos que habíamos hecho en BlinnPhong en el PS (MainPs), esta vez los hacemos en el VS dado que Gouraud trabaja a nivel de vertices.
     
     float3 worldPosition = mul(input.Position, World);
     float3 lightDirection = normalize(lightPosition - worldPosition.xyz);
@@ -191,7 +199,7 @@ GouraudVertexShaderOutput GouraudVS(in GouraudVertexShaderInput input)
     float NdotH = dot(normal, halfVector);
     float3 specularLight = KSpecular * specularColor * pow(saturate(NdotH), shininess);
     
-
+    //propagamos los valores de la textura, Diffuse (diffuse y ambient) y Specular a variables que luego iran al PS
     output.Diffuse = saturate(diffuseLight + ambientColor * KAmbient);
     output.Specular = specularLight;
     
@@ -200,6 +208,7 @@ GouraudVertexShaderOutput GouraudVS(in GouraudVertexShaderInput input)
     return output;
 }
 
+//El PS unicamente devuelve los parametros que le paso el VS (Diffuse, Specular y texturas)
 float4 GouraudPS(GouraudVertexShaderOutput input) : COLOR
 {
 	// Get the texture texel
